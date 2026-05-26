@@ -4,6 +4,7 @@
 
 import Stripe from 'stripe';
 import { buffer } from 'micro';
+import { sendWelcomeEmail } from '../../lib/emails/welcome.js';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Disable Next.js body parsing — Stripe needs the raw body to verify signature
@@ -118,8 +119,8 @@ async function grantLifetimeAccess({ email, customerName, paymentIntent }) {
   // 1. Add user to your DB with plan = 'lifetime'
   // await db.users.upsert({ email, plan: 'lifetime', paidAt: new Date(), stripeId: paymentIntent.customer })
 
-  // 2. 
-  await ({
+  // 2. Send welcome email with access link
+  await sendWelcomeEmail({
     email,
     name: customerName,
     plan: 'lifetime',
@@ -131,7 +132,13 @@ async function grantMonthlyAccess({ email, subscription, customer }) {
   // 1. Add user to DB with plan = 'monthly', subscriptionId for future cancellation
   // await db.users.upsert({ email, plan: 'monthly', subscriptionId: subscription.id, activeUntil: new Date(subscription.current_period_end * 1000) })
 
-  
+  // 2. Send welcome email with access link
+  await sendWelcomeEmail({
+    email,
+    name: customer.name,
+    plan: 'monthly',
+    accessUrl: `${process.env.NEXT_PUBLIC_APP_URL}/app?token=${generateAccessToken(email)}`
+  });
 }
 
 async function revokeAccess({ email, reason }) {

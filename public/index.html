@@ -1196,7 +1196,7 @@
 <script>
   // ── 
   //STRIPE SETUP ──
-  const STRIPE_KEY = pk_live_51RhU4VR1X11A4FtE9pbHNgPKkM30gsecGpL0DMzjIO2T10Fdgi2aN4jbzQET7fJf6LcOmcS0HRyATJSYqDQ5VtjC00jwsgSyLK
+  const STRIPE_KEY = window.__STRIPE_KEY__ || process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
   let stripe, cardElement, currentPlan;
 
