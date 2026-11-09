@@ -2,6 +2,8 @@
 // Calls Claude API server-side so your ANTHROPIC_API_KEY stays secret
 // Never expose your API key in frontend code
 
+import * as db from '../../lib/db.js';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -16,10 +18,33 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Format is required.' });
   }
 
-  // Optionally: validate user token here too
-  // const token = req.headers.authorization?.replace('Bearer ', '');
-  // const user = await validateToken(token);
-  // if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  // Require a valid access token so strangers can't burn Anthropic credits.
+  // Demo mode (non-production only) skips auth, mirroring verify-access.js.
+  const isDemoMode = process.env.DEMO_MODE === 'true' && process.env.NODE_ENV !== 'production';
+  if (!isDemoMode) {
+    const token =
+      req.headers.authorization?.replace('Bearer ', '') || req.body?.token;
+    if (!token) {
+      return res.status(401).json({ error: 'Access token required.' });
+    }
+    if (!db.isConfigured()) {
+      console.error('❌ No KV database configured — cannot verify access tokens.');
+      return res.status(500).json({ error: 'Access verification is temporarily unavailable.' });
+    }
+    let user;
+    try {
+      user = await db.findUserByToken(token);
+    } catch (err) {
+      console.error('Repurpose token check error:', err);
+      return res.status(500).json({ error: 'Verification failed. Please try again.' });
+    }
+    if (!user || !user.active) {
+      return res.status(401).json({ error: 'Invalid or expired access token.' });
+    }
+    if (user.plan === 'monthly' && user.activeUntil && new Date(user.activeUntil) < new Date()) {
+      return res.status(401).json({ error: 'Your subscription has expired. Please renew.' });
+    }
+  }
 
   const PROMPTS = {
     twitter: `Convert the following content into a punchy Twitter/X thread.

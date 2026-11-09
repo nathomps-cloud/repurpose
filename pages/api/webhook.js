@@ -6,6 +6,7 @@
           // pages/api/webhook.js
 import Stripe from 'stripe';
 import { buffer } from 'micro';
+import crypto from 'crypto';
 import { sendWelcomeEmail } from '../../lib/emails/welcome.js';
 import * as db from '../../lib/db.js';
 
@@ -124,7 +125,6 @@ async function sendPaymentFailedEmail(email) {
 }
 
 function generateAccessToken(email) {
-  const crypto = require('crypto');
   return crypto
     .createHmac('sha256', process.env.ACCESS_TOKEN_SECRET || 'dev-secret')
     .update(email + Date.now())
