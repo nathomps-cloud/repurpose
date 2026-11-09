@@ -1196,12 +1196,16 @@
 <script>
   // ── 
   //STRIPE SETUP ──
-  const STRIPE_KEY = window.__STRIPE_KEY__ || process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  // The publishable key is injected by the server as window.__STRIPE_KEY__
+  // (see pages/index.js). Never reference process.env here — this is plain
+  // browser JS, and process is not defined, which would kill this whole script.
+  const STRIPE_KEY = window.__STRIPE_KEY__ || '';
 
   let stripe, cardElement, currentPlan;
 
   function initStripe() {
     if (typeof Stripe === 'undefined') return;
+    if (!STRIPE_KEY) return; // No publishable key configured — payments stay off.
     stripe = Stripe(STRIPE_KEY);
     const elements = stripe.elements({
       appearance: {
@@ -1287,17 +1291,31 @@
     clearPaymentMsg();
 
     try {
-      // In production: call your backend to create a PaymentIntent
-      // Your backend returns a client_secret
-      // Example: const { clientSecret } = await fetch('/api/create-payment-intent', {...}).then(r => r.json())
+      // 1. Ask the server to create a PaymentIntent (lifetime) or a
+      // subscription with an incomplete first invoice (monthly).
+      // The server returns the client_secret needed to confirm the card.
+      const intentRes = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: currentPlan, email, firstName, lastName })
+      });
+      const intentData = await intentRes.json();
 
-      // For demo purposes, we confirm directly (you need a real clientSecret from your server)
-      const { paymentMethod, error } = await stripe.createPaymentMethod({
-        type: 'card',
-        card: cardElement,
-        billing_details: {
-          name: `${firstName} ${lastName}`.trim(),
-          email: email
+      if (!intentRes.ok || !intentData.clientSecret) {
+        showError(intentData.error || 'Could not start the payment. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Confirm the payment with the card the buyer entered.
+      // Stripe.js handles 3D Secure / extra authentication if needed.
+      const { paymentIntent, error } = await stripe.confirmCardPayment(intentData.clientSecret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: `${firstName} ${lastName}`.trim(),
+            email: email
+          }
         }
       });
 
@@ -1307,12 +1325,12 @@
         return;
       }
 
-      // ✅ Payment method created successfully
-      // In production: send paymentMethod.id to your server to complete charge
-      // await fetch('/api/confirm-payment', { method: 'POST', body: JSON.stringify({ paymentMethodId: paymentMethod.id, plan: currentPlan, email }) })
-
-      showSuccess(`🎉 Payment successful! Check ${email} for your access link.`);
-      document.getElementById('submitBtn').style.display = 'none';
+      if (paymentIntent && paymentIntent.status === 'succeeded') {
+        showSuccess(`🎉 Payment successful! Check ${email} for your access link.`);
+        document.getElementById('submitBtn').style.display = 'none';
+      } else {
+        showError('Payment did not complete. Please try again or use a different card.');
+      }
 
     } catch (err) {
       showError('Something went wrong. Please try again.');
